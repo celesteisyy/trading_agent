@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Mar 22 15:34:56 2025
-
-@author: wodewenjianjia
-"""
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,11 +10,17 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Set up logging
+log_dir = os.path.join("agent_lc", "output")
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+log_file = os.path.join(log_dir, "trading_system.log")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("trading_system.log"),
+        logging.FileHandler(log_file),
         logging.StreamHandler()
     ]
 )
@@ -119,27 +119,27 @@ class DataCollectionAgent:
         for ticker in self.data:
             df = self.data[ticker]
         
-        # Check if column exists
+            # Check if column exists
             if column not in df.columns:
-               logger.warning(f"Column {column} not found in data for {ticker}")
-               continue
+                logger.warning(f"Column {column} not found in data for {ticker}")
+                continue
             
-        # Calculate z-scores
+            # Calculate z-scores
             z_scores = np.abs((df[column] - df[column].mean()) / df[column].std())
         
-        # Create boolean mask for outliers using comparison
+            # Create boolean mask for outliers using comparison
             outliers = z_scores > threshold
         
-        # Count outliers using .sum() method - Convert to scalar with int()
-            outlier_count = int(outliers.sum())  # Convert to scalar integer
+            # Count outliers using .sum() method - Convert to scalar with int()
+            outlier_count = int(outliers.sum())
         
-            if outlier_count > 0:  # Now comparing scalar to scalar
-               logger.info(f"Detected {outlier_count} outliers in {ticker} {column} data")
+            if outlier_count > 0:
+                logger.info(f"Detected {outlier_count} outliers in {ticker} {column} data")
             
-            # Calculate rolling median
-               rolling_median = df[column].rolling(window=5, center=True).median()
+                # Calculate rolling median
+                rolling_median = df[column].rolling(window=5, center=True).median()
             
-            # Replace outliers using boolean indexing
-               df.loc[outliers, column] = rolling_median.loc[outliers]
+                # Replace outliers using np.where to avoid multidimensional indexing issues
+                df[column] = np.where(outliers, rolling_median, df[column])
             
-               logger.info("Replaced outliers with rolling median")
+                logger.info("Replaced outliers with rolling median")

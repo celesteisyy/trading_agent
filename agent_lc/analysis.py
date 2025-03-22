@@ -1,11 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Mar 22 15:37:05 2025
-
-@author: wodewenjianjia
-"""
-
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,6 +10,9 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Set up logging
+log_dir = os.path.join("agent_lc", "output")
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

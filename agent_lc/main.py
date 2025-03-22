@@ -1,18 +1,18 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Mar 22 15:49:06 2025
-
-@author: wodewenjianjia
-"""
-
 from tradesystem import TradingSystem
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 import logging
+import os
+
 
 # Set up logging
+log_dir = os.path.join("agent_lc", "output")
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+log_file = os.path.join(log_dir, "trading_system.log")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("App")
+
 
 def main():
     # Initialize the trading system
@@ -23,7 +23,7 @@ def main():
     
     # Set date range
     end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    start_date = (datetime.now() - relativedelta(years=5)).strftime('%Y-%m-%d')
     
     # Set up trading system
     system.setup(etfs, start_date, end_date)
