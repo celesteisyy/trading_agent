@@ -1,9 +1,7 @@
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 import openai
-import os
-
-openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def generate_summary_report(data, additional_info=""):
     """
@@ -20,48 +18,88 @@ def generate_summary_report(data, additional_info=""):
         "\nPlease generate a report summary."
     )
     try:
-        response = openai.Completion.create(
-            engine="text-davinci-003",
-            prompt=prompt,
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # 或者 "gpt-4" 如果可用
+            messages=[
+                {"role": "system", "content": "You are a trading strategy analyst."},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=300,
             temperature=0.5,
-            n=1,
-            stop=None,
         )
-        report = response.choices[0].text.strip()
+        report = response.choices[0].message.content.strip()
         return report
     except Exception as e:
         print("LLM report generation failed:", e)
         return "Report generation failed."
 
-def plot_time_series(time_series, title="Time Series Chart", ylabel="Value"):
+def plot_drawdown(portfolio_values):
     """
-    Generate and display a time series plot using matplotlib.
+    Generate a plot showing the portfolio drawdown.
+    Drawdown is computed as the percentage difference between the portfolio value and its cumulative maximum.
     """
-    plt.figure()
-    plt.plot(time_series.index, time_series.values)
-    plt.title(title)
-    plt.xlabel("Date")
-    plt.ylabel(ylabel)
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    running_max = portfolio_values.cummax()
+    drawdown = (portfolio_values - running_max) / running_max * 100
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.plot(drawdown.index, drawdown.values, label="Drawdown (%)", color="red")
+    ax.set_title("Portfolio Drawdown")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Drawdown (%)")
+    ax.legend()
+    fig.tight_layout()
+    return fig
 
-if __name__ == "__main__":
-    # Test plotting with dummy time series data.
-    import numpy as np
-    dates = pd.date_range(start="2022-01-01", periods=30, freq='B')
-    dummy_series = pd.Series(np.random.randn(30).cumsum(), index=dates)
-    plot_time_series(dummy_series, title="Dummy Portfolio Value", ylabel="Value")
+def plot_pnl_distribution(portfolio_values):
+    """
+    Generate a histogram showing the distribution of daily PnL (difference in portfolio value day-to-day).
+    """
+    pnl = portfolio_values.diff().dropna()
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.hist(pnl, bins=20, color="skyblue", edgecolor="black")
+    ax.axvline(x=0, color="red", linestyle="--", label="Zero PnL")
+    ax.set_title("Daily PnL Distribution")
+    ax.set_xlabel("Daily PnL")
+    ax.set_ylabel("Frequency")
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def plot_portfolio_value(portfolio_values):
+    """
+    Generate a plot of the portfolio value over time.
+    """
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.plot(portfolio_values.index, portfolio_values.values, label="Portfolio Value", color="blue")
+    ax.set_title("Portfolio Value")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Value")
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+def plot_portfolio_with_trades(portfolio_values, trades=None):
+    """
+    Generate a plot of portfolio value over time with trade markers.
+    `trades` should be a DataFrame containing at least a 'Date' column and a 'Signal' column (e.g., BUY/SELL).
+    """
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.plot(portfolio_values.index, portfolio_values.values, label="Portfolio Value", color="blue")
     
-    # Test generating a dummy summary report.
-    dummy_df = pd.DataFrame({
-        "MA": np.random.randn(30),
-        "RSI": np.random.uniform(20, 80, 30),
-        "MACD": np.random.randn(30),
-        "Signal": np.random.choice(["BUY", "SELL", "HOLD"], 30)
-    }, index=dates)
-    additional_info = "Risk-Free Rate: 4.24% and Market Premium: 5%"
-    report = generate_summary_report(dummy_df, additional_info=additional_info)
-    print("Generated Report:")
-    print(report)
+    if trades is not None and not trades.empty:
+        trades['Date'] = pd.to_datetime(trades['Date'])
+        buy_trades = trades[trades['Signal'] == "BUY"]
+        sell_trades = trades[trades['Signal'] == "SELL"]
+        if not buy_trades.empty:
+            ax.scatter(buy_trades['Date'], portfolio_values.loc[buy_trades['Date']],
+                       marker="^", color="green", s=100, label="Buy")
+        if not sell_trades.empty:
+            ax.scatter(sell_trades['Date'], portfolio_values.loc[sell_trades['Date']],
+                       marker="v", color="red", s=100, label="Sell")
+        ax.legend()
+    
+    ax.set_title("Portfolio Value with Trades")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Value")
+    fig.tight_layout()
+    return fig

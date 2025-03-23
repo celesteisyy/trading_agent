@@ -5,38 +5,68 @@ class StrategyDevelopmentAgent:
         # Define risk management parameters, e.g., stop loss and take profit thresholds.
         self.stop_loss_threshold = 0.05   # 5%
         self.take_profit_threshold = 0.10 # 10%
+    
+
+    def compute_entry_price(self, analyzed_data):
+        """
+        Dynamically compute the entry price.
+        Example: Use Bollinger Band lower band if available; otherwise, fallback to 98% of current price.
+        Returns the entry price as a float.
+        """
+        last_row = analyzed_data.iloc[-1]
+        # Check if 'BB_lower' column exists in the analyzed data
+        if 'BB_lower' in analyzed_data.columns:
+            bb_lower = last_row['BB_lower']
+            # If bb_lower is a Series, use its first element; otherwise, use it directly.
+            return float(bb_lower.iloc[0]) if hasattr(bb_lower, 'iloc') else float(bb_lower)
+        else:
+            # Fallback: return 98% of the current closing price.
+            return float(last_row['Close']) * 0.98
+
 
     def generate_trade_signal(self, analyzed_data):
         """
-        Given an analyzed DataFrame (with indicators), generate a trade signal.
-        For example, use simple rules:
-          - If RSI < 30 and MACD > Signal_Line, signal BUY.
-          - If RSI > 70 and MACD < Signal_Line, signal SELL.
-          - Otherwise, HOLD.
-        Incorporate risk management (for demonstration, using a dummy entry price).
+        Generate a trade signal based on technical indicators.
+        Steps:
+        1. Extract the last row of the analyzed DataFrame.
+        2. Convert RSI, MACD, Signal_Line, and current price to float using .iloc[0] if necessary.
+        3. Dynamically compute the entry price.
+        4. Determine the trading signal based on indicator thresholds.
+        5. Apply risk management: override HOLD if the price deviates significantly.
+        Returns:
+        signal: The trading signal ("BUY", "SELL", or "HOLD").
+        current_price: The current market price (float).
         """
         last_row = analyzed_data.iloc[-1]
-        rsi = last_row['RSI']
-        macd = last_row['MACD']
-        signal_line = last_row['Signal_Line']
-        current_price = last_row['Close']
-        # For risk management, assume a dummy entry price.
-        entry_price = current_price * 0.98
-
+        
+        def to_float(val):
+            return float(val.iloc[0]) if hasattr(val, 'iloc') else float(val)
+        
+        rsi = to_float(last_row['RSI'])
+        macd = to_float(last_row['MACD'])
+        signal_line = to_float(last_row['Signal_Line'])
+        current_price = to_float(last_row['Close'])
+        
+        # Compute dynamic entry price.
+        entry_price = self.compute_entry_price(analyzed_data)
+        
         if rsi < 30 and macd > signal_line:
             signal = "BUY"
         elif rsi > 70 and macd < signal_line:
             signal = "SELL"
         else:
             signal = "HOLD"
-
-        # Example risk management: if price has moved sufficiently, override to SELL.
+        
+        # Risk management: adjust signal if price deviates significantly from the entry price.
         if signal == "HOLD":
             if current_price <= entry_price * (1 - self.stop_loss_threshold):
                 signal = "SELL"
             elif current_price >= entry_price * (1 + self.take_profit_threshold):
                 signal = "SELL"
+        
         return signal, current_price
+
+
 
     def generate_trade_instructions(self, analyzed_portfolio, trade_date):
         """
