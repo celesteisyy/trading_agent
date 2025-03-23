@@ -1,68 +1,90 @@
+import os
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import yfinance as yf
+from datetime import datetime, timedelta
+import warnings
+warnings.filterwarnings('ignore')
 
 class AnalysisAgent:
+    """
+    Agent responsible for technical analysis and generating signals.
+    """
     def __init__(self):
-        pass
-
-    def calculate_moving_average(self, data, window=20):
-        data['MA'] = data['Close'].rolling(window=window).mean()
-        return data
-
-    def calculate_RSI(self, data, period=14):
-        delta = data['Close'].diff()
-        gain = delta.clip(lower=0).rolling(window=period).mean()
-        loss = (-delta.clip(upper=0)).rolling(window=period).mean()
+        self.indicators = {}
+    
+    def calculate_indicators(self, data, ticker):
+        """
+        Calculate technical indicators for a given ticker.
+        Adds moving averages, RSI, MACD, Bollinger Bands, and ATR.
+        """
+        df = data.copy()
+        # Moving Averages
+        df['SMA_20'] = df['Close'].rolling(window=20).mean()
+        df['SMA_50'] = df['Close'].rolling(window=50).mean()
+        df['EMA_20'] = df['Close'].ewm(span=20, adjust=False).mean()
+        
+        # Relative Strength Index (RSI)
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
-        data['RSI'] = 100 - (100 / (1 + rs))
-        return data
-
-    def calculate_MACD(self, data, short_window=12, long_window=26, signal_window=9):
-        data['EMA_short'] = data['Close'].ewm(span=short_window, adjust=False).mean()
-        data['EMA_long'] = data['Close'].ewm(span=long_window, adjust=False).mean()
-        data['MACD'] = data['EMA_short'] - data['EMA_long']
-        data['Signal_Line'] = data['MACD'].ewm(span=signal_window, adjust=False).mean()
-        return data
-
-    def calculate_bollinger_bands(self, data, window=20, num_std=2):
-        data['BB_MA'] = data['Close'].rolling(window=window).mean()
-        data['BB_STD'] = data['Close'].rolling(window=window).std()
-        data['BB_upper'] = data['BB_MA'] + num_std * data['BB_STD']
-        data['BB_lower'] = data['BB_MA'] - num_std * data['BB_STD']
-        return data
-
-    def analyze_data(self, data):
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # MACD
+        df['EMA_12'] = df['Close'].ewm(span=12, adjust=False).mean()
+        df['EMA_26'] = df['Close'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = df['EMA_12'] - df['EMA_26']
+        df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
+        
+        # Bollinger Bands
+        df['BB_Middle'] = df['Close'].rolling(window=20).mean()
+        df['BB_Std'] = df['Close'].rolling(window=20).std()
+        df['BB_Upper'] = df['BB_Middle'] + 2 * df['BB_Std']
+        df['BB_Lower'] = df['BB_Middle'] - 2 * df['BB_Std']
+        
+        # Average True Range (ATR)
+        df['TR'] = np.maximum(
+            df['High'] - df['Low'],
+            np.maximum(
+                abs(df['High'] - df['Close'].shift()),
+                abs(df['Low'] - df['Close'].shift())
+            )
+        )
+        df['ATR'] = df['TR'].rolling(window=14).mean()
+        
+        self.indicators[ticker] = df
+        return df
+    
+    def generate_signals_very_simple(self, ticker):
         """
-        Perform full technical analysis on a single DataFrame.
+        Generate simple random trading signals for testing purposes.
         """
-        data = self.calculate_moving_average(data)
-        data = self.calculate_RSI(data)
-        data = self.calculate_MACD(data)
-        data = self.calculate_bollinger_bands(data)
-        return data
-
-    def correlation_analysis(self, portfolio_data):
-        """
-        Given a dictionary of DataFrames for multiple assets, compute a correlation matrix
-        of their closing prices.
-        """
-        prices = {ticker: df['Close'] for ticker, df in portfolio_data.items()}
-        price_df = pd.DataFrame(prices)
-        return price_df.corr()
-
+        if ticker not in self.indicators:
+            print(f"No indicator data available for {ticker}")
+            return None
+            
+        df = self.indicators[ticker].copy()
+        import random
+        df['Signal'] = [random.uniform(-1, 1) for _ in range(len(df))]
+        self.indicators[ticker] = df
+        return df
+    
     def analyze_portfolio(self, portfolio_data):
         """
-        Analyze a portfolio of assets by processing each asset’s DataFrame.
-        Returns a dictionary with ticker keys and analyzed DataFrames.
+        Analyze each asset's data in a portfolio.
+        Returns a dictionary mapping tickers to analyzed DataFrames.
         """
         analyzed = {}
         for ticker, df in portfolio_data.items():
-            analyzed[ticker] = self.analyze_data(df)
+            analyzed[ticker] = self.calculate_indicators(df, ticker)
         return analyzed
 
 if __name__ == "__main__":
     # Test analysis on dummy data.
-    import numpy as np
     dates = pd.date_range(start="2022-01-01", periods=50, freq='B')
     dummy_data = pd.DataFrame({
         'Open': np.random.randn(50).cumsum() + 100,
@@ -72,9 +94,6 @@ if __name__ == "__main__":
         'Volume': np.random.randint(1000000, 2000000, size=50)
     }, index=dates)
     agent = AnalysisAgent()
-    analyzed = agent.analyze_data(dummy_data)
+    analyzed = agent.calculate_indicators(dummy_data, "SPY")
     print("Analyzed Data:")
     print(analyzed.head())
-    corr = agent.correlation_analysis({"SPY": dummy_data, "QQQ": dummy_data})
-    print("\nCorrelation Matrix:")
-    print(corr)

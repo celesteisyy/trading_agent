@@ -5,7 +5,7 @@ import openai
 from data_collection import DataCollectionAgent
 from analysis import AnalysisAgent
 from strategy_development import StrategyDevelopmentAgent
-from portfolio_management import PortfolioManagementAgent
+from portfolio_management import PortfolioManagerAgent
 from report_generate import (
     generate_summary_report,
     plot_drawdown,
@@ -27,13 +27,13 @@ def main():
     print("Project: ETF and Major Asset Classes Multi-Agent Trading System")
     print("Objective: Data collection, analysis, strategy & portfolio management, and report generation.\n")
     
-    # Define output directory
+    # Define the output directory.
     current_dir = os.path.dirname(os.path.abspath(__file__))
     output_dir = os.path.join(current_dir, "output")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Step 0: Get available ETFs and save as CSV for user reference.
+    # Step 0: Retrieve available ETFs and save as a CSV for user reference.
     data_agent = DataCollectionAgent()
     available_etfs = data_agent.get_available_etfs()
     if not available_etfs:
@@ -50,7 +50,7 @@ def main():
         print("No valid tickers selected. Defaulting to SPY, QQQ, IWM.")
         tickers = ["SPY", "QQQ", "IWM"]
     
-    # Step 1: Set time window (past 5 years) and collect data.
+    # Step 1: Set the time window (past 5 years) and collect market data.
     end_date = datetime.today()
     start_date = end_date - relativedelta(years=5)
     start_date_str = start_date.strftime("%Y-%m-%d")
@@ -70,7 +70,7 @@ def main():
     if risk_free_rate is not None:
         print("\nLatest Risk-Free Rate (10-Year Treasury):", risk_free_rate)
     
-    # Step 2: Analyze data.
+    # Step 2: Analyze the collected data.
     analysis_agent_obj = AnalysisAgent()
     analyzed_portfolio = analysis_agent_obj.analyze_portfolio(portfolio_data)
     for ticker in tickers:
@@ -78,9 +78,9 @@ def main():
     
     # Step 3: Strategy development and portfolio management.
     strategy_agent = StrategyDevelopmentAgent()
-    portfolio_agent = PortfolioManagementAgent()
+    portfolio_agent = PortfolioManagerAgent()
     
-    # Choose a sample trade date (e.g., the 11th trading day of the first selected ETF)
+    # Choose a sample trade date (e.g., the 11th trading day of the first selected ETF).
     sample_trade_date = analyzed_portfolio[tickers[0]].index[10]
     trade_instructions = strategy_agent.generate_trade_instructions(analyzed_portfolio, sample_trade_date)
     print("\nTrade Instructions on", sample_trade_date.date(), ":", trade_instructions)
@@ -89,19 +89,25 @@ def main():
     # Execute trades on the sample_trade_date; on other days, no trades are executed.
     dates = analyzed_portfolio[tickers[0]].index
     for date in dates:
-        # Execute trade instructions on the sample_trade_date
         if date == sample_trade_date:
-            portfolio_agent.execute_trades(trade_instructions)
-        # Update portfolio value using the closing price of the first ETF
+            for ticker, (signal, price) in trade_instructions.items():
+                decision = {
+                    'ticker': ticker,
+                    'action': signal,
+                    'price': price,
+                    'date': sample_trade_date
+                }
+                portfolio_agent.execute_trade(decision)
+        # Update portfolio value using the closing price of the first ETF.
         price = analyzed_portfolio[tickers[0]].loc[date, "Close"]
         latest_prices = {tickers[0]: price}
         port_val = portfolio_agent.compute_portfolio_value(latest_prices)
         portfolio_agent.update_portfolio_history(port_val)
     
-    # Convert portfolio history to a Series for plotting, using the same index as the analyzed data.
+    # Convert the portfolio value history to a Series for plotting (using the same index as the analyzed data).
     portfolio_value_series = pd.Series(portfolio_agent.portfolio_value_history, index=dates)
     
-    # Step 4: Generate report (LLM-generated analysis report)
+    # Step 4: Generate an analysis report using LLM.
     try:
         report_text = generate_summary_report(
             analyzed_portfolio[tickers[0]],
@@ -111,7 +117,7 @@ def main():
         report_text = f"LLM report generation failed: {e}"
         print(report_text)
     
-    # Step 5: Call plotting functions to generate four charts.
+    # Step 5: Generate four plots using the report_generate module functions.
     fig_dd = plot_drawdown(portfolio_value_series)
     dd_file = os.path.join(output_dir, "drawdown.png")
     fig_dd.savefig(dd_file, dpi=100)
@@ -136,7 +142,7 @@ def main():
     fig_trades.savefig(trades_file, dpi=100)
     plt.close(fig_trades)
     
-    # Step 6: Generate final DOCX report, including the LLM analysis report and all generated images.
+    # Step 6: Generate the final DOCX report, including the LLM report text and all generated images.
     report_docx_file = os.path.join(output_dir, "report.docx")
     doc = Document()
     doc.add_heading("Strategy Report", 0)
