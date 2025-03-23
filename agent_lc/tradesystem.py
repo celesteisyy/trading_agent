@@ -230,7 +230,7 @@ class TradingSystem:
         # Convert to DataFrames for easier analysis
         portfolio_df = pd.DataFrame(portfolio_history)
 
-        # Define output directory (已在前面定义，此处直接使用 output_dir)
+        # Define output directory
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
@@ -328,7 +328,7 @@ class TradingSystem:
         results_dir : str
             Directory to save results
         """
-        # 固定导出路径为 agent_lc/output
+        # fix output path to output
         results_dir = output_dir
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)

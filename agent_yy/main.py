@@ -3,21 +3,11 @@ import os
 from dotenv import load_dotenv, find_dotenv
 import openai
 from data_collection import DataCollectionAgent
-from analysis import AnalysisAgent
-from strategy_development import StrategyDevelopmentAgent
+from strategy_development import TradingStrategyAgent
 from portfolio_management import PortfolioManagerAgent
-from report_generate import (
-    generate_summary_report,
-    plot_drawdown,
-    plot_trade_pnl_distribution,
-    plot_portfolio_value,
-    plot_portfolio_with_trades
-)
+from report_generate import ReportAgent  # ReportAgent now includes generate_final_report()
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 import matplotlib.pyplot as plt
-from docx import Document
-from docx.shared import Inches
 
 # Initialization: Load environment variables and API key.
 _ = load_dotenv(find_dotenv())
@@ -25,7 +15,7 @@ openai.api_key = os.environ['OPENAI_API_KEY']
 
 def main():
     print("Project: ETF and Major Asset Classes Multi-Agent Trading System")
-    print("Objective: Data collection, analysis, strategy & portfolio management, and report generation.\n")
+    print("Objective: Full simulation using fetched data, strategy & portfolio management, and final report generation via report_generate.\n")
     
     # Define the output directory.
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,8 +23,8 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Step 0: Retrieve available ETFs and save as a CSV for user reference.
-    data_agent = DataCollectionAgent()
+    # Step 0: Retrieve available ETFs and save as a CSV for reference.
+    data_agent = DataCollectionAgent()  # Time window is set within this agent.
     available_etfs = data_agent.get_available_etfs()
     if not available_etfs:
         available_etfs = ["SPY", "QQQ", "IWM", "DIA", "EFA", "EEM", "VNQ"]
@@ -43,24 +33,17 @@ def main():
     etfs_df.to_csv(etfs_csv_file, index=False)
     print("Available ETFs CSV saved at:", etfs_csv_file)
     
-    # Ask the user to select ETFs.
     tickers_input = input("Please check the available ETFs CSV file and enter the tickers you want to select (comma-separated): ")
     tickers = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip().upper() in available_etfs]
     if not tickers:
         print("No valid tickers selected. Defaulting to SPY, QQQ, IWM.")
         tickers = ["SPY", "QQQ", "IWM"]
     
-    # Step 1: Set the time window (past 5 years) and collect market data.
-    end_date = datetime.today()
-    start_date = end_date - relativedelta(years=5)
-    start_date_str = start_date.strftime("%Y-%m-%d")
-    end_date_str = end_date.strftime("%Y-%m-%d")
-    print(f"Time Window: {start_date_str} to {end_date_str}")
-    
+    # Step 1: Collect market data (past 5 years) for each selected ticker.
     portfolio_data = {}
     for ticker in tickers:
         print(f"\nCollecting data for {ticker}...")
-        data = data_agent.collect_data(ticker, start_date_str, end_date_str)
+        data = data_agent.collect_data(ticker)  # DataCollectionAgent uses its internal time window.
         portfolio_data[ticker] = data
         ratios = data_agent.get_financial_ratios(ticker)
         if ratios:
@@ -70,102 +53,43 @@ def main():
     if risk_free_rate is not None:
         print("\nLatest Risk-Free Rate (10-Year Treasury):", risk_free_rate)
     
-    # Step 2: Analyze the collected data.
-    analysis_agent_obj = AnalysisAgent()
-    analyzed_portfolio = analysis_agent_obj.analyze_portfolio(portfolio_data)
+    # Step 2: Use the fetched data as the "analyzed" portfolio.
+    analyzed_portfolio = portfolio_data
     for ticker in tickers:
-        print(f"Analysis completed for {ticker}.")
+        print(f"Data collection completed for {ticker}.")
     
     # Step 3: Strategy development and portfolio management.
-    strategy_agent = StrategyDevelopmentAgent()
+    strategy_agent = TradingStrategyAgent()
     portfolio_agent = PortfolioManagerAgent()
     
-    # Choose a sample trade date (e.g., the 11th trading day of the first selected ETF).
-    sample_trade_date = analyzed_portfolio[tickers[0]].index[10]
-    trade_instructions = strategy_agent.generate_trade_instructions(analyzed_portfolio, sample_trade_date)
-    print("\nTrade Instructions on", sample_trade_date.date(), ":", trade_instructions)
-    
-    # Simulate daily portfolio updates:
-    # Execute trades on the sample_trade_date; on other days, no trades are executed.
-    dates = analyzed_portfolio[tickers[0]].index
-    for date in dates:
-        if date == sample_trade_date:
-            for ticker, (signal, price) in trade_instructions.items():
+    # Simulate trading on each trading day (for simplicity, using dates from the first ticker).
+    trading_dates = analyzed_portfolio[tickers[0]].index
+    for date in trading_dates:
+        # Generate trade instructions for all tickers.
+        trade_instructions = strategy_agent.generate_trade_instructions(analyzed_portfolio, date)
+        for ticker, (signal, price) in trade_instructions.items():
+            if signal != "HOLD":
                 decision = {
                     'ticker': ticker,
                     'action': signal,
                     'price': price,
-                    'date': sample_trade_date
+                    'date': date
                 }
                 portfolio_agent.execute_trade(decision)
-        # Update portfolio value using the closing price of the first ETF.
-        price = analyzed_portfolio[tickers[0]].loc[date, "Close"]
-        latest_prices = {tickers[0]: price}
+        # Update portfolio value using the latest closing prices from all tickers.
+        latest_prices = {}
+        for ticker in tickers:
+            if date in analyzed_portfolio[ticker].index:
+                latest_prices[ticker] = analyzed_portfolio[ticker].loc[date, "Close"]
         port_val = portfolio_agent.compute_portfolio_value(latest_prices)
         portfolio_agent.update_portfolio_history(port_val)
     
-    # Convert the portfolio value history to a Series for plotting (using the same index as the analyzed data).
-    portfolio_value_series = pd.Series(portfolio_agent.portfolio_value_history, index=dates)
-    
-    # Step 4: Generate an analysis report using LLM.
-    try:
-        report_text = generate_summary_report(
-            analyzed_portfolio[tickers[0]],
-            additional_info="Risk-Free Rate: " + str(risk_free_rate)
-        )
-    except Exception as e:
-        report_text = f"LLM report generation failed: {e}"
-        print(report_text)
-    
-    # Step 5: Generate four plots using the report_generate module functions.
-    fig_dd = plot_drawdown(portfolio_value_series)
-    dd_file = os.path.join(output_dir, "drawdown.png")
-    fig_dd.savefig(dd_file, dpi=100)
-    plt.close(fig_dd)
-    
-    # Use the daily difference of portfolio values as the trade PnL distribution data.
-    trade_pnl_series = portfolio_value_series.diff().dropna()
-    fig_pnl_dist = plot_trade_pnl_distribution(trade_pnl_series)
-    pnl_dist_file = os.path.join(output_dir, "pnl_distribution.png")
-    fig_pnl_dist.savefig(pnl_dist_file, dpi=100)
-    plt.close(fig_pnl_dist)
-    
-    fig_val = plot_portfolio_value(portfolio_value_series)
-    val_file = os.path.join(output_dir, "portfolio_value.png")
-    fig_val.savefig(val_file, dpi=100)
-    plt.close(fig_val)
-    
-    # If actual trade data is available, pass it; otherwise, pass None.
-    trades_data = None
-    fig_trades = plot_portfolio_with_trades(portfolio_value_series, trades=trades_data)
-    trades_file = os.path.join(output_dir, "portfolio_with_trades.png")
-    fig_trades.savefig(trades_file, dpi=100)
-    plt.close(fig_trades)
-    
-    # Step 6: Generate the final DOCX report, including the LLM report text and all generated images.
-    report_docx_file = os.path.join(output_dir, "report.docx")
-    doc = Document()
-    doc.add_heading("Strategy Report", 0)
-    doc.add_paragraph(report_text)
-    
-    doc.add_heading("Portfolio Drawdown", level=1)
-    if os.path.exists(dd_file):
-        doc.add_picture(dd_file, width=Inches(6))
-    
-    doc.add_heading("Trade PnL Distribution", level=1)
-    if os.path.exists(pnl_dist_file):
-        doc.add_picture(pnl_dist_file, width=Inches(6))
-    
-    doc.add_heading("Portfolio Value Over Time", level=1)
-    if os.path.exists(val_file):
-        doc.add_picture(val_file, width=Inches(6))
-    
-    doc.add_heading("Portfolio Performance with Trades", level=1)
-    if os.path.exists(trades_file):
-        doc.add_picture(trades_file, width=Inches(6))
-    
-    doc.save(report_docx_file)
-    print("\nGenerated Strategy Report saved at:", report_docx_file)
+    # Step 4: Call ReportAgent to generate the final report.
+    # The ReportAgent's generate_final_report method (implemented in report_generate.py)
+    # handles both plot generation and DOCX report creation.
+    report_agent = ReportAgent(data_agent)
+    additional_info = "Risk-Free Rate: " + str(risk_free_rate)
+    report_agent.generate_final_report(analyzed_portfolio[tickers[0]], portfolio_agent, additional_info)
     
 if __name__ == "__main__":
     main()
