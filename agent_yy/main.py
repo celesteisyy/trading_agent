@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv, find_dotenv
 import openai
 from data_collection import DataCollectionAgent
-from strategy_development import TradingStrategyAgent
+from strategy_development import StrategyAgent
 from portfolio_management import PortfolioManagerAgent
 from report_generate import ReportAgent  # ReportAgent now includes generate_final_report()
 from datetime import datetime
@@ -18,7 +18,7 @@ def main():
     print("Objective: Full simulation using fetched data, strategy & portfolio management, and final report generation via report_generate.\n")
     
     # Define the output directory.
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    current_dir = os.getcwd()
     output_dir = os.path.join(current_dir, "output")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -59,14 +59,14 @@ def main():
         print(f"Data collection completed for {ticker}.")
     
     # Step 3: Strategy development and portfolio management.
-    strategy_agent = TradingStrategyAgent()
+    strategy_agent = StrategyAgent()
     portfolio_agent = PortfolioManagerAgent()
     
     # Simulate trading on each trading day (for simplicity, using dates from the first ticker).
     trading_dates = analyzed_portfolio[tickers[0]].index
     for date in trading_dates:
         # Generate trade instructions for all tickers.
-        trade_instructions = strategy_agent.generate_trade_instructions(analyzed_portfolio, date)
+        trade_instructions = strategy_agent.generate_trade_decisions(analyzed_portfolio, date)
         for ticker, (signal, price) in trade_instructions.items():
             if signal != "HOLD":
                 decision = {
