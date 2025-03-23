@@ -26,7 +26,7 @@ class ReportAgent:
             data_agent: An instance of DataCollectionAgent.
         """
         self.data_agent = data_agent
-        self.output_dir = "agent_yy/output"
+        self.output_dir = "output"
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
     

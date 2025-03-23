@@ -6,7 +6,7 @@ import os
 
 
 # Set up logging
-log_dir = os.path.join("agent_lc", "output")
+log_dir = os.path.join("output")
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 log_file = os.path.join(log_dir, "trading_system.log")

@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 
 
 # Set up logging
-log_dir = os.path.join("agent_lc", "output")
+log_dir = os.path.join("output")
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 logging.basicConfig(
