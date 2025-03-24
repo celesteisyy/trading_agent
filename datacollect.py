@@ -7,10 +7,15 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import logging
 import warnings
+import requests
+from dotenv import load_dotenv, find_dotenv
 warnings.filterwarnings('ignore')
 
+# Load environment variables from .env file
+_ = load_dotenv(find_dotenv())
+
 # Set up logging
-log_dir = os.path.join("agent_lc", "output")
+log_dir = os.path.join("output")
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
@@ -143,3 +148,75 @@ class DataCollectionAgent:
                 df[column] = np.where(outliers, rolling_median, df[column])
             
                 logger.info("Replaced outliers with rolling median")
+    
+    def get_financial_ratios(self, ticker):
+        """
+        Retrieve financial ratios for a given ticker from Financial Modeling Prep.
+        
+        Parameters:
+            ticker (str): Stock ticker symbol.
+        
+        Returns:
+            list or None: The retrieved financial ratios data, or None if retrieval fails.
+        """
+        api_key = os.environ.get('FMP_API_KEY', 'YOUR_FMP_API_KEY')
+        url = f"https://financialmodelingprep.com/api/v3/ratios/{ticker}?apikey={api_key}"
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            ratios_data = response.json()
+            print(f"Financial ratios for {ticker} retrieved successfully.")
+            return ratios_data
+        except Exception as e:
+            print("Error fetching financial ratios:", e)
+            return None
+
+    def get_risk_free_rate(self):
+        """
+        Retrieve the latest risk-free rate from the FRED API (using series 'DGS10').
+        
+        Returns:
+            float or None: The latest risk-free rate value, or None if retrieval fails.
+        """
+        api_key = os.environ.get('FRED_API_KEY', 'YOUR_FRED_API_KEY')
+        url = f"https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key={api_key}&file_type=json&sort_order=desc&limit=1"
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            fred_data = response.json()
+            observations = fred_data.get("observations", [])
+            if observations:
+                latest_observation = observations[0]
+                value = latest_observation.get("value", "0")
+                if value == ".":
+                    print("Latest risk-free rate value is missing in FRED data.")
+                    return None
+                risk_free_rate = float(value)
+                print("Latest risk-free rate retrieved successfully.")
+                return risk_free_rate
+            else:
+                print("No observations found in FRED response.")
+                return None
+        except Exception as e:
+            print("Error fetching risk free rate from FRED:", e)
+            return None
+
+    def get_available_etfs(self):
+        """
+        Retrieve an up-to-date list of available ETFs from Financial Modeling Prep.
+        
+        Returns:
+            list: A list of available ETF ticker symbols.
+        """
+        api_key = os.environ.get('FMP_API_KEY', 'YOUR_FMP_API_KEY')
+        url = f"https://financialmodelingprep.com/api/v3/etf/list?apikey={api_key}"
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            etfs = response.json()
+            available_tickers = [item.get("symbol") for item in etfs if "symbol" in item and item.get("symbol")]
+            print(f"Retrieved {len(available_tickers)} available ETFs successfully.")
+            return available_tickers
+        except Exception as e:
+            print("Error fetching available ETFs:", e)
+            return []

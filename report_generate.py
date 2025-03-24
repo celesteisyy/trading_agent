@@ -207,22 +207,32 @@ class ReportAgent:
         """
         fig, ax = plt.subplots(figsize=(12, 6))
         ax.plot(portfolio_values.index, portfolio_values.values, color='blue', label='Portfolio Value ($)')
-
+        
         if trades is not None and not trades.empty:
+            # Ensure the trades DataFrame has a 'Date' column.
+            # If 'Date' does not exist but 'date' does, rename 'date' to 'Date'.
+            if 'Date' not in trades.columns and 'date' in trades.columns:
+                trades = trades.rename(columns={'date': 'Date'})
+            
+            # Convert the 'Date' column to datetime format.
             trades['Date'] = pd.to_datetime(trades['Date'])
-            buy_trades = trades[(trades['action'] == 'BUY') | (trades['Signal'] == 'BUY')]
-            sell_trades = trades[(trades['action'] == 'SELL') | (trades['Signal'] == 'SELL')]
-
+            
+            # Get buy and sell trades. Supports either 'action' or 'Signal' columns.
+            buy_trades = trades[(trades['action'] == 'BUY') | (trades.get('Signal') == 'BUY')]
+            sell_trades = trades[(trades['action'] == 'SELL') | (trades.get('Signal') == 'SELL')]
+            
+            # Plot buy trades on the portfolio value chart.
             if not buy_trades.empty:
                 ax.scatter(buy_trades['Date'],
-                           portfolio_values.loc[buy_trades['Date']],
-                           marker='^', color='green', s=100, label='BUY')
+                        portfolio_values.loc[buy_trades['Date']],
+                        marker='^', color='green', s=100, label='BUY')
+            # Plot sell trades on the portfolio value chart.
             if not sell_trades.empty:
                 ax.scatter(sell_trades['Date'],
-                           portfolio_values.loc[sell_trades['Date']],
-                           marker='v', color='red', s=100, label='SELL')
+                        portfolio_values.loc[sell_trades['Date']],
+                        marker='v', color='red', s=100, label='SELL')
             ax.legend()
-
+        
         ax.set_title("Portfolio Performance with Trades")
         ax.set_xlabel("Date")
         ax.set_ylabel("Value ($)")
@@ -235,7 +245,8 @@ class ReportAgent:
         print(f"Portfolio with trades plot saved to: {save_path}")
         return fig
 
-    def generate_final_report(self, data, portfolio_agent, additional_info=""):
+
+    def generate_final_report(self, report_data, portfolio_agent, additional_info=""):
         """
         Generate a complete final report including:
           - A summary report using LLM based on recent technical analysis.
@@ -243,27 +254,28 @@ class ReportAgent:
           - Creation of a final DOCX report that embeds the generated plots and summary text.
         
         Parameters:
-            data (pd.DataFrame): DataFrame with recent technical indicator data.
-            portfolio_agent: The PortfolioManagerAgent instance containing portfolio history and trade history.
+            report_data (dict): Dictionary with keys 'metrics', 'portfolio_df', and 'trades_df' 
+                                from TradingSystem.generate_performance_report.
+            portfolio_agent: The PortfolioManagerAgent instance containing portfolio and trade history.
             additional_info (str): Additional context (e.g., risk-free rate).
         
         Returns:
             str: The path to the final DOCX report.
         """
-        # Generate summary report text.
-        report_text = self.generate_summary_report(data, additional_info)
-        
-        # Convert portfolio history (list of dicts) to a DataFrame and then create a Series.
-        portfolio_df = pd.DataFrame(portfolio_agent.portfolio_history)
-        if 'date' in portfolio_df.columns:
-            portfolio_df['date'] = pd.to_datetime(portfolio_df['date'])
-            portfolio_df.sort_values('date', inplace=True)
-            portfolio_df.set_index('date', inplace=True)
+        # Use the portfolio_df from report_data for generating summary
+        portfolio_df = report_data.get('portfolio_df', pd.DataFrame())
+        if not portfolio_df.empty:
+            report_text = self.generate_summary_report(portfolio_df, additional_info)
         else:
-            print("Portfolio history is empty.")
+            report_text = "No portfolio data available for summary."
+
+        # Use portfolio_df to generate portfolio value series for plotting
+        if not portfolio_df.empty and 'total_value' in portfolio_df.columns:
+            portfolio_value_series = portfolio_df['total_value']
+        else:
+            print("No portfolio total_value data available.")
             return None
-        portfolio_value_series = portfolio_df['total_value']
-        
+
         # Generate and save plots.
         fig_dd = self.plot_drawdown(portfolio_value_series)
         dd_file = os.path.join(self.output_dir, "drawdown.png")
@@ -281,7 +293,7 @@ class ReportAgent:
         fig_val.savefig(val_file, dpi=100)
         plt.close(fig_val)
         
-        trades_df = pd.DataFrame(portfolio_agent.trade_history) if portfolio_agent.trade_history else None
+        trades_df = report_data.get('trades_df', pd.DataFrame())
         fig_trades = self.plot_portfolio_with_trades(portfolio_value_series, trades=trades_df)
         trades_file = os.path.join(self.output_dir, "portfolio_with_trades.png")
         fig_trades.savefig(trades_file, dpi=100)
@@ -297,7 +309,7 @@ class ReportAgent:
         if os.path.exists(dd_file):
             doc.add_picture(dd_file, width=Inches(6))
         
-        doc.add_heading("Trade PnL Distribution", level=1)
+        doc.add_heading("Trade P&L Distribution", level=1)
         if os.path.exists(pnl_dist_file):
             doc.add_picture(pnl_dist_file, width=Inches(6))
         
@@ -312,3 +324,4 @@ class ReportAgent:
         doc.save(report_docx_file)
         print(f"Final report generated and saved at: {report_docx_file}")
         return report_docx_file
+

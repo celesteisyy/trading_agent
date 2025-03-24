@@ -1,13 +1,17 @@
-# lc trading agent
+# trading agent
+
 ## Overview
-This project implements a backtesting trading system. It collects historical market data, processes it (handles missing values and replaces outliers with rolling medians), calculates technical indicators, generates trading signals, and manages a portfolio with trade execution. An optional interactive dashboard displays performance metrics.
+This project implements an AI oriented trading system. It collects historical market data, processes it (handles missing values and replaces outliers with rolling medians), calculates technical indicators, generates trading signals, and manages a portfolio with trade execution. An optional interactive dashboard displays performance metrics.
+
+## Acknowledgements
+This project was jointly developed by Yueying (Celeste) Huang and Lechen (Stella) Gong.
 
 ## File Structure
 - **main.py**  
   The entry point. It sets up the trading system, defines the date range and ETFs (e.g., SPY, QQQ, IWM), runs the backtest, and launches the dashboard.
 
 - **datacollect.py**  
-  Contains `DataCollectionAgent` for fetching market data via yfinance, handling missing data, and removing outliers using a rolling median. Logs are output to `agent_lc/output/trading_system.log`.
+  Contains `DataCollectionAgent`, which is responsible for gathering historical market data for specified tickers using yfinance. In addition, it retrieves additional financial data such as financial ratios, the risk-free rate, and a list of available ETFs. Logs are output to the output/trading_system.log file.
 
 - **analysis.py**  
   Contains `AnalysisAgent` for calculating technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, ATR) and generating trading signals.
@@ -20,6 +24,9 @@ This project implements a backtesting trading system. It collects historical mar
 
 - **tradesystem.py**  
   Contains `TradingSystem` to orchestrate the data collection, analysis, strategy, and portfolio management modules, as well as report generation and dashboard creation.
+
+- **report_generate.py**  
+  Contains `ReportAgent` which is responsible for generating summary reports and visualizations. This module generates a concise summary report using OpenAI’s LLM, and compiles a final DOCX report embedding all the generated plots and summary text. All reports and plots are stored in the 'output' folder.
 
 ## Setup & Usage
 1. **Installation:**

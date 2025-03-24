@@ -14,12 +14,13 @@ import datetime
 import logging
 import os
 
+# Create output directory if it does not exist
 output_dir = 'output'
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
+# Set up logging configuration
 log_path = os.path.join(output_dir, "trading_system.log")
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -33,10 +34,12 @@ logger = logging.getLogger("TradingSystem")
 
 class TradingSystem:
     """
-    Main trading system that orchestrates all agents
+    Main trading system that orchestrates all agents including data collection,
+    analysis, strategy generation, and portfolio management.
     """
 
     def __init__(self, initial_capital=100000):
+        # Initialize all system agents
         self.data_agent = DataCollectionAgent()
         self.analysis_agent = AnalysisAgent()
         self.strategy_agent = StrategyAgent(min_holding_period=5, max_trades_per_week=1)
@@ -49,16 +52,16 @@ class TradingSystem:
 
     def setup(self, tickers, start_date, end_date=None):
         """
-        Set up the trading system with tickers and date range
-
+        Set up the trading system with the given tickers and date range.
+        
         Parameters:
         -----------
         tickers : list
-            List of ticker symbols to trade
+            List of ticker symbols to trade.
         start_date : str
-            Start date in 'YYYY-MM-DD' format
+            Start date in 'YYYY-MM-DD' format.
         end_date : str, optional
-            End date in 'YYYY-MM-DD' format, defaults to today
+            End date in 'YYYY-MM-DD' format; defaults to today if not provided.
         """
         self.tickers = tickers
 
@@ -76,23 +79,20 @@ class TradingSystem:
             else:
                 self.end_date = pd.Timestamp(end_date)
 
-        # Convert Timestamps to strings for yfinance
+        # Convert timestamps to strings for yfinance download
         start_str = self.start_date.strftime('%Y-%m-%d')
         end_str = self.end_date.strftime('%Y-%m-%d')
 
-        # Fetch data
+        # Fetch market data for the given tickers and date range
         self.data_agent.fetch_data(tickers, start_str, end_str)
         self.data_agent.handle_missing_data()
         self.data_agent.remove_outliers()
 
-        # Calculate indicators
+        # Calculate technical indicators and generate trading signals for each ticker
         for ticker in tickers:
             if ticker in self.data_agent.data:
-                # Ensure we have data before calculating indicators
                 if not self.data_agent.data[ticker].empty:
-                    # Calculate indicators and generate signals
                     self.analysis_agent.calculate_indicators(self.data_agent.data[ticker], ticker)
-                    # Use the very simple signal generation method
                     self.analysis_agent.generate_signals_very_simple(ticker)
                 else:
                     logger.warning(f"Empty data for {ticker}, skipping indicator calculation")
@@ -101,16 +101,16 @@ class TradingSystem:
 
     def run_backtest(self):
         """
-        Run backtest with the configured system
-
+        Run the backtest for the configured system and execute trades based on generated signals.
+        
         Returns:
         --------
         dict
-            Backtest results and metrics
+            A dictionary containing backtest metrics, trade history, and portfolio history.
         """
         logger.info("Starting backtest")
 
-        # Get all trading days
+        # Collect all trading days from the available ticker data
         all_dates = []
         for ticker in self.tickers:
             if ticker in self.data_agent.data and not self.data_agent.data[ticker].empty:
@@ -125,18 +125,14 @@ class TradingSystem:
                 'portfolio_history': []
             }
 
-        # Convert all dates to pandas Timestamps for consistent comparison
+        # Convert all dates to pandas Timestamps for consistency
         all_dates = [pd.Timestamp(d) for d in all_dates]
 
-        # Create unique sorted list of dates
+        # Create a unique sorted list of trading days
         trading_days = sorted(list(set(all_dates)))
 
-        # Filter dates to our date range using explicit element-wise comparison
-        filtered_days = []
-        for day in trading_days:
-            if (day >= self.start_date) and (day <= self.end_date):
-                filtered_days.append(day)
-
+        # Filter trading days to be within the specified date range
+        filtered_days = [day for day in trading_days if (day >= self.start_date) and (day <= self.end_date)]
         trading_days = filtered_days
 
         if not trading_days:
@@ -149,7 +145,7 @@ class TradingSystem:
 
         logger.info(f"Found {len(trading_days)} trading days in date range")
 
-        # Store indicator data with calculated signals
+        # Store indicator data with calculated signals for each ticker
         indicator_data = {}
         for ticker in self.tickers:
             if ticker in self.analysis_agent.indicators:
@@ -158,40 +154,31 @@ class TradingSystem:
                 if 'Signal' in indicator_data[ticker].columns:
                     logger.info(f"First few signal values for {ticker}: {indicator_data[ticker]['Signal'].head().tolist()}")
 
-        # Loop through each trading day
+        # Loop through each trading day to execute trades based on signals
         for day in trading_days:
             self.current_date = day
 
-            # Check for signals and execute trades
             for ticker in self.tickers:
-                # Skip if we don't have indicators for this ticker
                 if ticker not in indicator_data:
                     continue
 
-                # Get the indicator data with signals
                 signals_df = indicator_data[ticker]
-
-                # Ensure the day is in the signals dataframe
                 if day not in signals_df.index:
                     continue
 
-                # Check if Signal column exists
                 if 'Signal' not in signals_df.columns:
                     logger.warning(f"No 'Signal' column found for {ticker} on {day}")
                     continue
 
-                # Generate trade decision
+                # Generate trade decision for the day
                 decision = self.strategy_agent.generate_trade_decisions(signals_df, ticker, day)
 
-                # If action is BUY or SELL, execute the trade
+                # Execute trade if decision action is BUY or SELL
                 if decision['action'] in ['BUY', 'SELL']:
-                    # Strategy agent records the trade intent
                     self.strategy_agent.execute_trade(decision)
-
-                    # Portfolio manager executes the actual trade with position sizing
                     self.portfolio_agent.execute_trade(decision)
 
-        # Calculate final metrics
+        # Calculate final portfolio metrics
         metrics = self.portfolio_agent.get_portfolio_metrics()
 
         logger.info("Backtest completed")
@@ -209,17 +196,18 @@ class TradingSystem:
 
     def generate_performance_report(self, results):
         """
-        Generate a performance report from backtest results
-
+        Generate a performance report based on backtest results. This includes creating visualizations
+        such as portfolio value, drawdown, and trade performance charts, and saving them to the output folder.
+        
         Parameters:
         -----------
         results : dict
-            Results from backtest
-
+            The backtest results containing metrics, trade history, and portfolio history.
+        
         Returns:
         --------
         dict
-            Dictionary with report data and visualizations
+            A dictionary containing report data and visualizations.
         """
         logger.info("Generating performance report")
 
@@ -227,10 +215,10 @@ class TradingSystem:
         trade_history = results['trade_history']
         portfolio_history = results['portfolio_history']
 
-        # Convert to DataFrames for easier analysis
+        # Convert portfolio history to DataFrame for visualization
         portfolio_df = pd.DataFrame(portfolio_history)
 
-        # Define output directory
+        # Ensure output directory exists
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
@@ -321,14 +309,14 @@ class TradingSystem:
 
     def export_results(self, results_dir='./results'):
         """
-        Export results to CSV files
-
+        Export the results (trade history, portfolio history, and performance metrics) to CSV files.
+        
         Parameters:
         -----------
         results_dir : str
-            Directory to save results
+            Directory where the results CSV files will be saved.
         """
-        # fix output path to output
+        # Use output directory for results export
         results_dir = output_dir
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
@@ -352,11 +340,12 @@ class TradingSystem:
 
     def create_dashboard(self):
         """
-        Create an interactive dashboard for system performance
-
+        Create an interactive dashboard to display system performance metrics and visualizations.
+        
         Returns:
         --------
         Dashboard object
+            The Dash app instance containing the dashboard.
         """
         try:
             import plotly.graph_objects as go
@@ -367,20 +356,18 @@ class TradingSystem:
 
             logger.info("Creating performance dashboard")
 
-            # Convert data to DataFrames for easier analysis
+            # Convert portfolio history to DataFrame for visualization
             portfolio_df = pd.DataFrame(self.portfolio_agent.portfolio_history)
 
             if portfolio_df.empty:
                 logger.warning("Empty portfolio history, dashboard will be limited")
-                # Create a DataFrame with initial capital for each day in the date range
+                # Create a dummy DataFrame with initial capital for each day in the date range
                 date_range = pd.date_range(start=self.start_date, end=self.end_date)
                 values = [self.portfolio_agent.initial_capital] * len(date_range)
-                portfolio_df = pd.DataFrame(
-                    {
-                        'date': date_range,
-                        'total_value': values
-                    }
-                )
+                portfolio_df = pd.DataFrame({
+                    'date': date_range,
+                    'total_value': values
+                })
                 portfolio_df.set_index('date', inplace=True)
             else:
                 portfolio_df['date'] = pd.to_datetime(portfolio_df['date'])
@@ -390,18 +377,18 @@ class TradingSystem:
             if not trades_df.empty:
                 trades_df['date'] = pd.to_datetime(trades_df['date'])
 
-            # Get metrics
+            # Get portfolio metrics for display
             metrics = self.portfolio_agent.get_portfolio_metrics()
 
-            # Create app
+            # Create Dash app with Bootstrap styling
             app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-            # Create figures
+            # Create Plotly figures for the dashboard
             fig1 = go.Figure()
             fig2 = go.Figure()
             fig3 = go.Figure()
 
-            # Portfolio value chart
+            # Portfolio Value Chart
             fig1.add_trace(go.Scatter(
                 x=portfolio_df.index,
                 y=portfolio_df['total_value'],
@@ -409,7 +396,7 @@ class TradingSystem:
                 name='Portfolio Value'
             ))
 
-            # Add buy/sell markers if we have trades
+            # Add BUY/SELL markers if trade data is available
             if not trades_df.empty:
                 buys = trades_df[trades_df['action'] == 'BUY']
                 sells = trades_df[trades_df['action'] == 'SELL']
@@ -439,7 +426,7 @@ class TradingSystem:
                 legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
             )
 
-            # Drawdown chart
+            # Drawdown Chart
             if 'total_value' in portfolio_df.columns:
                 portfolio_df['previous_peak'] = portfolio_df['total_value'].cummax()
                 portfolio_df['drawdown'] = (portfolio_df['total_value'] - portfolio_df['previous_peak']) / portfolio_df['previous_peak'] * 100
@@ -460,7 +447,7 @@ class TradingSystem:
                     yaxis=dict(tickformat='.2f')
                 )
 
-            # P&L distribution
+            # Trade P&L Distribution Chart
             if not trades_df.empty and 'profit_pct' in trades_df.columns:
                 profit_trades = trades_df[trades_df['action'] == 'SELL']['profit_pct']
                 if not profit_trades.empty:
@@ -477,7 +464,7 @@ class TradingSystem:
                         yaxis_title='Frequency'
                     )
 
-            # Create layout
+            # Dashboard layout using Dash Bootstrap Components
             app.layout = dbc.Container([
                 html.H1("Trading System Performance Dashboard", className="text-center my-4"),
 
@@ -501,7 +488,7 @@ class TradingSystem:
                     ]), width=3)
                 ], className="mb-4"),
 
-                # Charts
+                # Charts section
                 dbc.Row([
                     dbc.Col(dcc.Graph(figure=fig1), width=12)
                 ], className="mb-4"),
